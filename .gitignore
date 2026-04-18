@@ -1,0 +1,17 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencies / build outputs
+node_modules/
+dist/
+*.zip
+
+# Obsidian dev artifacts
+obsidian/data.json

@@ -9,11 +9,132 @@ const { Plugin, PluginSettingTab, Setting, Notice } = obsidianModule;
 //   'follow-setting' - 仅用于「普通点击行为」：跟随 Web Viewer 的外链开关
 //   'toggle-default' - 仅用于「Cmd/Ctrl 点击行为」：反转「普通点击」的最终目标
 //   'disabled'      - 仅用于「Shift / Cmd/Ctrl 点击行为」：不拦截，按"普通点击"处理
-const OPEN_MODE_LABELS = {
-  "reuse": "复用当前 Web Viewer（在原 pane 换 URL）",
-  "new-tab": "新开 Web Viewer tab（不复用，不分屏）",
-  "new-split": "新建分屏 Web Viewer",
-  "browser": "在默认浏览器打开",
+// UI strings. English is shown unless Obsidian's interface language is Chinese.
+// 界面文字：Obsidian 界面语言为中文时显示中文，否则显示英文。
+const STRINGS = {
+  en: {
+    modeReuse: "Reuse current Web Viewer",
+    modeNewTab: "New Web Viewer tab",
+    modeNewSplit: "New split Web Viewer",
+    modeBrowser: "Default browser",
+
+    noticeBrowserFailed: "Couldn't open the default browser. Please check your system's default browser setting.",
+    noticeNoWebViewer: "No enabled Web Viewer core plugin was found.",
+    noticeFellBackToBrowser: "Opened in the default browser instead.",
+    noticeEnableWebViewer: "Please enable it under Core plugins first.",
+    noticeWebViewerFailedFallback: "Couldn't open in Web Viewer; opened in the default browser instead.",
+    noticeWebViewerFailed: "Couldn't open in Web Viewer. Open the developer tools to see the error.",
+
+    intro: "Configure how links open for a plain click, a Shift click, and a Cmd/Ctrl click. All three share the same set of options, so you can mix and match.",
+
+    plainName: "Plain click behavior",
+    plainDesc: "How an external link opens when clicked with no modifier key. \"Reuse\" swaps the URL in the existing Web Viewer pane; \"New tab\" and \"New split\" always open a fresh one.",
+    plainFollow: "Follow Web Viewer setting",
+
+    shiftName: "Shift click behavior",
+    shiftDesc: "How a link opens when you hold Shift and click. \"New Web Viewer tab\" is recommended. \"Don't intercept\" makes it act like a plain click.",
+    disabled: "Don't intercept",
+
+    modName: "Cmd/Ctrl click behavior",
+    modDesc: "How a link opens when you hold Cmd (macOS) or Ctrl (Windows/Linux) and click. \"Toggle default target\" is recommended: if a plain click goes to Web Viewer, this goes to the browser, and vice versa.",
+    modToggle: "Toggle default target",
+
+    splitName: "Split direction",
+    splitDesc: "\"Vertical\" splits to the right of the current pane; \"Horizontal\" splits below it. Only applies when a new split is created.",
+    splitVertical: "Vertical (right)",
+    splitHorizontal: "Horizontal (below)",
+
+    focusName: "Focus the new pane after opening",
+    focusDesc: "When on, focus moves to the Web Viewer pane after a page opens.",
+
+    fallbackName: "Fall back to the browser when Web Viewer is unavailable",
+    fallbackDesc: "If Web Viewer isn't enabled or fails to open the link, open it in the system default browser instead.",
+
+    detectName: "Fallback when automatic detection fails",
+    detectDesc: "Only applies when \"Plain click behavior\" is set to \"Follow Web Viewer setting\" and the plugin can't read Web Viewer's \"Open external links\" switch. Choose what to assume.",
+    detectBrowser: "Assume off (default browser)",
+    detectWebViewer: "Assume on (Web Viewer)",
+
+    debugName: "Debug log",
+    debugDesc: "When on, interceptions are logged to the developer tools Console. Useful when a link doesn't open in Web Viewer as expected.",
+
+    tip: "Tip: if you turn off Web Viewer's \"Open external links\" and set Cmd/Ctrl click behavior here to \"Toggle default target\", then Cmd/Ctrl + click will open links in Web Viewer.",
+  },
+  zh: {
+    modeReuse: "复用当前 Web Viewer（在原 pane 换 URL）",
+    modeNewTab: "新开 Web Viewer tab（不复用，不分屏）",
+    modeNewSplit: "新建分屏 Web Viewer",
+    modeBrowser: "在默认浏览器打开",
+
+    noticeBrowserFailed: "打开默认浏览器失败，请检查系统默认浏览器设置。",
+    noticeNoWebViewer: "未检测到已启用的 Web Viewer 核心插件。",
+    noticeFellBackToBrowser: "已改为用默认浏览器打开。",
+    noticeEnableWebViewer: "请先在 Core plugins 中启用它。",
+    noticeWebViewerFailedFallback: "在 Web Viewer 中打开失败，已回退到默认浏览器。",
+    noticeWebViewerFailed: "在 Web Viewer 中打开失败，请打开开发者工具查看错误。",
+
+    intro: "为普通点击、Shift 点击、Cmd/Ctrl 点击分别配置打开方式。选项集统一，自由组合。",
+
+    plainName: "普通点击行为",
+    plainDesc: "无修饰键直接点击外链时的打开方式。可以选择跟随 Web Viewer 的外链开关，也可以直接指定一种方式。",
+    plainFollow: "跟随 Web Viewer 的外链设置",
+
+    shiftName: "Shift 点击行为",
+    shiftDesc: "按住 Shift 点击时使用的打开方式。推荐“新开 Web Viewer tab”。",
+    disabled: "不拦截（跟随普通点击）",
+
+    modName: "Cmd/Ctrl 点击行为",
+    modDesc: "按住 Cmd（macOS）或 Ctrl（Windows/Linux）点击时的打开方式。推荐“反转默认目标”：默认进 Web Viewer 时就进浏览器，反之亦然。",
+    modToggle: "反转默认目标（Web Viewer ↔ 浏览器）",
+
+    splitName: "分屏方向",
+    splitDesc: "vertical 会在当前 pane 右侧拆分，horizontal 会在下方拆分。仅在需要新建分屏时生效。",
+    splitVertical: "vertical（右侧分屏）",
+    splitHorizontal: "horizontal（下方分屏）",
+
+    focusName: "打开后聚焦新分屏",
+    focusDesc: "开启后，网页打开后会自动切换到 Web Viewer pane。",
+
+    fallbackName: "无法使用 Web Viewer 时回退到浏览器",
+    fallbackDesc: "当 Web Viewer 未启用或打开失败时，自动用系统默认浏览器打开。",
+
+    detectName: "自动检测失败时的回退行为",
+    detectDesc: "仅在你把“普通点击行为”设为“跟随 Web Viewer 的外链设置”，且插件没能识别 Web Viewer 内部开关时生效。",
+    detectBrowser: "按“未开启外链 Web Viewer”处理（走默认浏览器）",
+    detectWebViewer: "按“已开启外链 Web Viewer”处理（走 Web Viewer）",
+
+    debugName: "调试日志",
+    debugDesc: "开启后在开发者工具 Console 打印拦截日志，排查链接没走 Web Viewer 时很有用。",
+
+    tip: "提示：如果你把 Web Viewer 的“打开外部链接”关掉，并且这里的 Cmd/Ctrl 点击行为设为“反转默认目标”，那 Cmd/Ctrl + 点击就会在 Web Viewer 中打开。",
+  },
+};
+
+// Obsidian's interface language: getLanguage() on Obsidian 1.8.7+, else the "language" key it keeps in localStorage.
+function getUiLanguage() {
+  let lang = "";
+  try {
+    if (typeof obsidianModule.getLanguage === "function") {
+      lang = obsidianModule.getLanguage() || "";
+    } else {
+      lang = window.localStorage.getItem("language") || "";
+    }
+  } catch (error) {
+    lang = "";
+  }
+  return /^zh/i.test(lang) ? "zh" : "en";
+}
+
+function t(key) {
+  const table = STRINGS[getUiLanguage()] || STRINGS.en;
+  return table[key] !== undefined ? table[key] : STRINGS.en[key];
+}
+
+const OPEN_MODE_LABEL_KEYS = {
+  "reuse": "modeReuse",
+  "new-tab": "modeNewTab",
+  "new-split": "modeNewSplit",
+  "browser": "modeBrowser",
 };
 
 const DEFAULT_SETTINGS = {
@@ -491,7 +612,7 @@ module.exports = class SplitWebViewerModifierPlugin extends Plugin {
       window.open(url, "_blank");
     } catch (error) {
       console.error("[split-web-viewer-modifier] Failed to open in browser", error);
-      new Notice("打开默认浏览器失败，请检查系统默认浏览器设置。");
+      new Notice(t("noticeBrowserFailed"));
     }
   }
 
@@ -521,13 +642,13 @@ module.exports = class SplitWebViewerModifierPlugin extends Plugin {
     const mode = options.mode || "reuse"; // "reuse" | "new-tab" | "new-split"
 
     if (!this._isWebViewerAvailable()) {
-      const message = "未检测到已启用的 Web Viewer 核心插件。";
+      const message = t("noticeNoWebViewer");
       if (this.settings.fallbackToBrowserWhenWebViewerUnavailable) {
-        new Notice(`${message} 已改为用默认浏览器打开。`);
+        new Notice(`${message} ${t("noticeFellBackToBrowser")}`);
         this._openInBrowser(url);
         return;
       }
-      new Notice(`${message} 请先在 Core plugins 中启用它。`);
+      new Notice(`${message} ${t("noticeEnableWebViewer")}`);
       return;
     }
 
@@ -556,11 +677,11 @@ module.exports = class SplitWebViewerModifierPlugin extends Plugin {
     } catch (error) {
       console.error("[split-web-viewer-modifier] Failed to open in Web Viewer", error);
       if (this.settings.fallbackToBrowserWhenWebViewerUnavailable) {
-        new Notice("在 Web Viewer 中打开失败，已回退到默认浏览器。");
+        new Notice(t("noticeWebViewerFailedFallback"));
         this._openInBrowser(url);
         return;
       }
-      new Notice("在 Web Viewer 中打开失败，请打开开发者工具查看错误。");
+      new Notice(t("noticeWebViewerFailed"));
     }
   }
 
@@ -667,21 +788,21 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
 
     containerEl.createEl("h2", { text: "Split Web Viewer Modifier" });
     containerEl.createEl("p", {
-      text: "为普通点击、Shift 点击、Cmd/Ctrl 点击分别配置打开方式。选项集统一，自由组合。",
+      text: t("intro"),
     });
 
     const addOpenModeOptions = (dropdown) => {
-      dropdown.addOption("reuse", OPEN_MODE_LABELS["reuse"]);
-      dropdown.addOption("new-tab", OPEN_MODE_LABELS["new-tab"]);
-      dropdown.addOption("new-split", OPEN_MODE_LABELS["new-split"]);
-      dropdown.addOption("browser", OPEN_MODE_LABELS["browser"]);
+      dropdown.addOption("reuse", t(OPEN_MODE_LABEL_KEYS["reuse"]));
+      dropdown.addOption("new-tab", t(OPEN_MODE_LABEL_KEYS["new-tab"]));
+      dropdown.addOption("new-split", t(OPEN_MODE_LABEL_KEYS["new-split"]));
+      dropdown.addOption("browser", t(OPEN_MODE_LABEL_KEYS["browser"]));
     };
 
     new Setting(containerEl)
-      .setName("普通点击行为")
-      .setDesc("无修饰键直接点击外链时的打开方式。可以选择跟随 Web Viewer 的外链开关，也可以直接指定一种方式。")
+      .setName(t("plainName"))
+      .setDesc(t("plainDesc"))
       .addDropdown((dropdown) => {
-        dropdown.addOption("follow-setting", "跟随 Web Viewer 的外链设置");
+        dropdown.addOption("follow-setting", t("plainFollow"));
         addOpenModeOptions(dropdown);
         dropdown
           .setValue(this.plugin.settings.defaultAction)
@@ -692,11 +813,11 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Shift 点击行为")
-      .setDesc("按住 Shift 点击时使用的打开方式。推荐“新开 Web Viewer tab”。")
+      .setName(t("shiftName"))
+      .setDesc(t("shiftDesc"))
       .addDropdown((dropdown) => {
         addOpenModeOptions(dropdown);
-        dropdown.addOption("disabled", "不拦截（跟随普通点击）");
+        dropdown.addOption("disabled", t("disabled"));
         dropdown
           .setValue(this.plugin.settings.shiftAction)
           .onChange(async (value) => {
@@ -706,12 +827,12 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("Cmd/Ctrl 点击行为")
-      .setDesc("按住 Cmd（macOS）或 Ctrl（Windows/Linux）点击时的打开方式。推荐“反转默认目标”：默认进 Web Viewer 时就进浏览器，反之亦然。")
+      .setName(t("modName"))
+      .setDesc(t("modDesc"))
       .addDropdown((dropdown) => {
-        dropdown.addOption("toggle-default", "反转默认目标（Web Viewer ↔ 浏览器）");
+        dropdown.addOption("toggle-default", t("modToggle"));
         addOpenModeOptions(dropdown);
-        dropdown.addOption("disabled", "不拦截（跟随普通点击）");
+        dropdown.addOption("disabled", t("disabled"));
         dropdown
           .setValue(this.plugin.settings.modifierAction)
           .onChange(async (value) => {
@@ -721,12 +842,12 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("分屏方向")
-      .setDesc("vertical 会在当前 pane 右侧拆分，horizontal 会在下方拆分。仅在需要新建分屏时生效。")
+      .setName(t("splitName"))
+      .setDesc(t("splitDesc"))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("vertical", "vertical（右侧分屏）")
-          .addOption("horizontal", "horizontal（下方分屏）")
+          .addOption("vertical", t("splitVertical"))
+          .addOption("horizontal", t("splitHorizontal"))
           .setValue(this.plugin.settings.splitDirection)
           .onChange(async (value) => {
             this.plugin.settings.splitDirection = value;
@@ -735,8 +856,8 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("打开后聚焦新分屏")
-      .setDesc("开启后，网页打开后会自动切换到 Web Viewer pane。")
+      .setName(t("focusName"))
+      .setDesc(t("focusDesc"))
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.focusPane)
@@ -747,8 +868,8 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("无法使用 Web Viewer 时回退到浏览器")
-      .setDesc("当 Web Viewer 未启用或打开失败时，自动用系统默认浏览器打开。")
+      .setName(t("fallbackName"))
+      .setDesc(t("fallbackDesc"))
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.fallbackToBrowserWhenWebViewerUnavailable)
@@ -759,12 +880,12 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("自动检测失败时的回退行为")
-      .setDesc("仅在你把“普通点击行为”设为“跟随 Web Viewer 的外链设置”，且插件没能识别 Web Viewer 内部开关时生效。")
+      .setName(t("detectName"))
+      .setDesc(t("detectDesc"))
       .addDropdown((dropdown) => {
         dropdown
-          .addOption("browser", "按“未开启外链 Web Viewer”处理（走默认浏览器）")
-          .addOption("webviewer", "按“已开启外链 Web Viewer”处理（走 Web Viewer）")
+          .addOption("browser", t("detectBrowser"))
+          .addOption("webviewer", t("detectWebViewer"))
           .setValue(this.plugin.settings.detectionFallback)
           .onChange(async (value) => {
             this.plugin.settings.detectionFallback = value;
@@ -773,8 +894,8 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName("调试日志")
-      .setDesc("开启后在开发者工具 Console 打印拦截日志，排查链接没走 Web Viewer 时很有用。")
+      .setName(t("debugName"))
+      .setDesc(t("debugDesc"))
       .addToggle((toggle) => {
         toggle
           .setValue(this.plugin.settings.debugLog)
@@ -785,8 +906,9 @@ class SplitWebViewerModifierSettingTab extends PluginSettingTab {
       });
 
     containerEl.createEl("p", {
-      text: "提示：如果你把 Web Viewer 的“打开外部链接”关掉，并且这里的 Cmd/Ctrl 点击行为设为“反转默认目标”，那 Cmd/Ctrl + 点击就会在 Web Viewer 中打开。",
+      text: t("tip"),
       cls: "setting-item-description",
     });
   }
 }
+
